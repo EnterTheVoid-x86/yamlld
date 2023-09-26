@@ -2,7 +2,7 @@
 # Based on Yosild
 # ---------------------------------------
 # Yamlld - Your simple Linux distro
-  version="3.0"
+  version="3.1"
 # Yamlld is licensed under
 # GNU General Public License v3.0
 # ---------------------------------------
@@ -110,7 +110,10 @@ mknod dev/tty c 5 0
 printf $host > etc/hostname
 printf "root:x:0:0:root:/root:/bin/sh\nservice:x:1:1:service:/var/www/html:/usr/sbin/nologin" > etc/passwd
 echo "root::19471:0:99999:7:::" > etc/shadow
-echo "root:x:0:root\nservice:x:1:service" > etc/group
+cat << EOF > etc/group
+root:x:0:
+service:x:1:
+EOF
 echo "/bin/sh" > etc/shells
 echo "127.0.0.1	 localhost $host" > etc/hosts
 
@@ -172,6 +175,10 @@ echo "Editing /etc/motd..."
 
 sed -i '2d' /mnt/etc/motd
 sed -i '2d' /mnt/etc/motd
+
+echo "Removing leftovers..."
+
+rm /mnt/initrd.cpio
 
 echo "All jobs complete"
 
@@ -347,7 +354,7 @@ for i in run tmp dev proc sys; do
   mount -o bind /\$i /mnt/root/\$i
 done
 mount -t devpts none /mnt/root/pts
-rm -r /bin /etc /sbin /usr
+chmod u+s /mnt/root/bin/su
 exec /mnt/root/bin/busybox chroot /mnt/root /sbin/init
 EOF
 
@@ -356,6 +363,18 @@ printf "#!/bin/sh
 echo 'This account is currently not available.'
 sleep 3
 exit 1" > usr/sbin/nologin
+
+# doas
+cat << EOF > sbin/doas
+#!/bin/sh
+
+# Yamlld doas: simple su wrapper
+
+COMMAND="$@"
+
+su -c "$COMMAND"
+
+EOF
 
 # halt
 cat << EOF > sbin/halt
