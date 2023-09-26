@@ -2,20 +2,21 @@
 # Based on Yosild
 # ---------------------------------------
 # Yamlld - Your simple Linux distro
-  version="2.0"
+  version="3.0"
 # Yamlld is licensed under
 # GNU General Public License v3.0
 # ---------------------------------------
 
 # ----- Config --------------------------
-device="Yamlld.img"
+device="Yamlld.iso"
 distro_name="Yamlld"
-distro_desc=""
-distro_codename="nighthawk"
+distro_desc="Sparrow"
+distro_codename="sparrow"
 telnetd_enabled="true"
 hyperv_support="false"
-kernel="https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.16.19.tar.xz"
 busybox="https://busybox.net/downloads/busybox-1.34.1.tar.bz2"
+host="yamlld"
+initrd_file="initrd.img"
 # ---------------------------------------
 
 if [ $(id -u) -ne 0 ]; then
@@ -23,15 +24,9 @@ if [ $(id -u) -ne 0 ]; then
 fi
 
 clear && printf "\n** $distro_name - creating distribution\n\n"
-printf "** Are you sure that you want to delete all data from $device drive? (y/n): "
+printf "** Are you sure that you want to continue generating the ISO? (y/n): "
 read answer
 [ $answer != "y" ] && exit 1
-if [ $( mountpoint -qd /mnt ) ]; then
-  printf "** Can I umount /mnt? (y/n): "
-  read answer
-  [ $answer != "y" ] && exit 1
-  umount /mnt
-fi
 
 # installation of the BusyBox
 [ -d ./files ] || mkdir files
@@ -65,72 +60,29 @@ if [ $answer != "y" ] ; then
   cd ../../
 fi
 
-
-echo "** Partitioning $device" && sleep 2
-part=1
-lba=2048
-wipefs -af $device > /null 2>&1
-  echo "** Preparation of the system partition"
-  printf "n\np\n\n2048\n\nw\n" | \
-	 ./files/busybox/busybox fdisk $device > /null 2>&1
-
-echo y | mkfs.ext4 ${device}
-uuid=$(blkid ${device} -sUUID -ovalue)
-
-
-mount ${device} /mnt
-mkdir /mnt/boot
-host=$(printf $(printf $distro_name | tr A-Z a-z) | cut -d" " -f 1)
-
-echo "** Compilation of the kernel"
-arch=$(uname -m)
-[ $arch = 'i686' ] && arch="i386"
-answer="n"
-if [ -f files/linux/arch/$arch/boot/bzImage ] ; then
-  printf "** Do you want to use a previously compiled kernel? (y/n): "
-  read answer
+echo "** Creating ISO folder" && sleep 2
+mkdir -p iso/boot/grub/
+cat <<EOF > iso/boot/grub/grub.cfg
+set default=0
+set timeout=10
+# Load EFI video drivers. 
+insmod efi_gop
+insmod font
+if loadfont /boot/grub/fonts/unicode.pf2
+then
+        insmod gfxterm
+        set gfxmode=auto
+        set gfxpayload=keep
+        terminal_output gfxterm
 fi
-if [ $answer != "y" ] ; then
-  cd files
-  rm -r linux* > /null 2>&1
-  wget $kernel 
-  tar -xf *.tar.xz
-  rm linux-*.tar.xz
-  mv linux* linux
-  cd linux
-
-
-# Linux Kernel config --------------------------------------
-if [ "$hyperv_support" = "true" ]; then
-cat <<EOF >> arch/x86/configs/x86_64_defconfig
-CONFIG_HYPERVISOR_GUEST=y
-CONFIG_PARAVIRT=y
-CONFIG_CONNECTOR=y
-CONFIG_HYPERV=y
-CONFIG_HYPERV_NET=y
+menuentry 'Yamlld Linux' --class os {
+    insmod gzio
+    insmod part_msdos
+    linux /boot/bzImage loglevel=15
+    initrd /boot/initrd.img
+}
 EOF
-fi
-# ----------------------------------------------------------
-
-  make defconfig
-  make
-  cd ../../
-fi
-kernel_release=$(cat files/linux/include/config/kernel.release)
-kernel_file=vmlinuz-$kernel_release-$arch
-initrd_file=initrd.img-$kernel_release-$arch
-cp files/linux/arch/$arch/boot/bzImage /mnt/boot/$kernel_file
-
-echo "** Installation of GRUB"
-grub-install --target=i386-pc --root-directory=/mnt $device
-printf "timeout=3
-menuentry '$distro_name - $distro_desc' {
-linux /boot/$kernel_file quiet rootdelay=130
-initrd /boot/$initrd_file
-root=PARTUUID=$uuid
-boot
-echo Loading Linux
-}" > /mnt/boot/grub/grub.cfg
+cp bzImage iso/boot
 
 # creation of necessary directories
 mkdir rootfs
@@ -194,16 +146,47 @@ EOF
 # banner
 printf "\n\e[96m${*}$distro_name\e[0m${*} Linux \e[97m${*}$version\e[0m${*} - $distro_desc\n\n" | tee -a etc/issue usr/share/infoban >/null
 cat << EOF >> etc/issue
- Welcome. To get started, login as root.
- * Networking:                   ifupdown
+ Welcome. To get started, login as your user account.
+ * Networking:                   ifup/ifdown
  * Init scripts installer:       add-rc.d
  * To disable this message:      disban
 
 EOF
 echo "cp /usr/share/infoban /etc/issue" > sbin/disban
 
+# finish install
+cat << EOF > sbin/finish_install
+#!/bin/sh
+
+if [ $# -eq 0 ]; then
+    >&2 echo "No arguments provided"
+    exit 1
+fi
+
+echo "Removing install scripts..."
+rm /mnt/sbin/finish_install
+rm /mnt/usr/share/installation_guide.txt
+rm /mnt/sbin/install_guide
+
+echo "Editing /etc/motd..."
+
+sed -i '2d' /mnt/etc/motd
+sed -i '2d' /mnt/etc/motd
+
+echo "All jobs complete"
+
+EOF
+
+# install guide command
+cat <<EOF > sbin/install_guide
+#!/bin/sh
+less /usr/share/installation_guide.txt
+EOF
+
 # legal
 cat << EOF > etc/motd
+
+To install $distro_name, run the install_guide command.
 
 The programs included with the $distro_name Linux system are free software.
 $distro_name Linux comes with ABSOLUTELY NO WARRANTY, to the extent
@@ -212,15 +195,100 @@ permitted by applicable law.
 EOF
 
 cat << EOF > etc/os-release
-PRETTY_NAME="$distro_name Nighthawk"
+PRETTY_NAME="$distro_name $distro_desc"
 NAME="$distro_name"
 VERSION_ID="$version"
 VERSION="$version"
 VERSION_CODENAME="$distro_codename"
 ID="$distro_name"
-HOME_URL="https://github.com/jaromaz/Yamlld"
-SUPPORT_URL="https://jm.iq.pl/Yamlld"
-BUG_REPORT_URL="https://github.com/jaromaz/Yamlld/issues"
+HOME_URL="https://github.com/EnterTheVoid-x86/yamlld"
+EOF
+
+# install guide
+
+cat <<EOF > usr/share/installation_guide.txt
+Yamlld's install process requires that you already have a pre-existing
+bootloader on your hard-disk. Supported bootloaders include GRUB and Limine.
+
+---+++=== Partitioning ===+++---
+
+To begin, partition your hard-disk if necessary with fdisk.
+
+Mount your partitions (e.g. /dev/sda3, /dev/sda2):
+
+mount /dev/sdXX /mnt/ # /dev/sdXX: Your root partition
+mkdir /mnt/boot/
+mount /dev/sdXX /mnt/boot/ # /dev/sdXX: Your boot partition
+
+If you have an EFI system, run these additional commands (e.g. /dev/sda1):
+
+mkdir /mnt/boot/efi
+mount /dev/sdXX /mnt/boot/efi/ # /dev/sdXX: Your EFI partition
+
+---+++=== Format partitions ===+++---
+
+To format the partition you'd like to install to, run this command (e.g. /dev/sda3):
+
+mkfs.ext4 /dev/sdXX
+
+---+++=== Installation ===+++---
+
+Create a new folder to mount your installation media to:
+
+mkdir /install_media
+
+Now mount the installation media (e.g. /dev/sr0, /dev/sdb)
+
+mount /dev/sdXX /install_media
+
+Then, copy the initrd.img from the installation media into your root partition
+as initrd.cpio.gz:
+
+cp /install_media/boot/initrd.img /mnt/initrd.cpio.gz
+
+---+++=== Installation: Extracting the initrd ===+++---
+
+Change the working directory to your root:
+
+cd /mnt/
+
+Then, use gunzip and cpio to extract the gz:
+
+gunzip initrd.cpio.gz && cpio -i < initrd.cpio
+
+Verify the directory tree with ls.
+
+---+++=== Installation: Configuring bootloader ===+++---
+
+Copy the kernel from the installation media into your boot partition:
+
+cp /installation_media/boot/bzImage /mnt/boot/vmlinuz-yamlld
+
+Then, using vi, add Yamlld to your bootloader config.
+
+Example menuentry:
+
+menuentry 'Yamlld Linux' --class os {
+    insmod gzio
+    insmod part_msdos
+    insmod ext2
+    set root=(hdX,msdosX) # If you use GPT, replace this with (hdX,gptX)
+    linux /boot/vmlinuz-yamlld loglevel=4 root=/dev/sdXX init=/init rw
+}
+
+If your config is on another OS partition, create a folder in / named OS,
+and mount your partition to it. Then, edit the configuration using the above steps.
+
+---+++=== Installation: Finishing touches ===+++---
+
+Finalize the install with the finish_install command:
+
+finish_install
+
+---+++=== End ===+++---
+
+Congratulations! By the end of this guide, you should have a working Yamlld Linux system!
+If not, let me know if any steps failed on https://github.com/EnterTheVoid-x86/yamlld/~issues.
 EOF
 
 # inittab
@@ -233,7 +301,7 @@ tty4::askfirst:/sbin/getty 38400 tty4
 ::sysinit:/bin/hostname -F /etc/hostname
 ::sysinit:/etc/init.d/rcS
 ::ctrlaltdel:/sbin/reboot
-::shutdown:/bin/echo SHUTTING DOWN
+::shutdown:/bin/echo The system is going down NOW!
 ::shutdown:/sbin/swapoff -a
 ::shutdown:/etc/init.d/rcK
 ::shutdown:/bin/umount -a -r
@@ -250,6 +318,7 @@ EOF
 # init
 cat << EOF > init
 #!/bin/busybox sh
+echo Welcome to Yamlld Linux!
 /bin/busybox --install -s
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 mountpoint -q proc || mount -t proc proc proc
@@ -351,7 +420,7 @@ ln -s /etc/init.d/\$1 /etc/rc.d/\$2\$1
 echo "added \$1 to init."
 else
 echo "
-  ** $distro_name add-rc.d ussage:
+  ** $distro_name add-rc.d usage:
 
   add-rc.d [init.d script name] [order number]
 
@@ -437,16 +506,24 @@ chmod 4755 bin/busybox
 chmod 600  var/spool/cron/crontabs/root
 chmod 755  usr/sbin/nologin sbin/disban init sbin/man etc/init.d/rcS\
            usr/sbin/logrotate usr/bin/add-rc.d sbin/halt\
-           usr/share/udhcpc/default.script 
+           usr/share/udhcpc/default.script sbin/finish_install \
+	   sbin/install_guide
 chmod 644  etc/passwd etc/group etc/hostname etc/shells etc/hosts etc/fstab\
            etc/issue etc/motd etc/network/interfaces etc/profile
 
 echo "** Building initramfs"
-find . | cpio -H newc -o 2> /null | gzip > /mnt/boot/$initrd_file
+find . | cpio -H newc -o 2> /null | gzip > ../iso/boot/$initrd_file
 cd ..
-chmod 400 /mnt/boot/$initrd_file
-rm -r rootfs
-umount /mnt
+chmod 400 iso/boot/$initrd_file
+
+echo "** Generating ISO" && sleep 2
+pwd
+grub-mkrescue -o $device iso/
+
+echo "** Cleanup" && sleep 2
+rm -rf rootfs/ -v
+rm -rf iso/ -v
+
 printf "\n** all done **\n\n"
 
 
