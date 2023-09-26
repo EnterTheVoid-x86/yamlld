@@ -2,7 +2,7 @@
 # Based on Yosild
 # ---------------------------------------
 # Yamlld - Your simple Linux distro
-  version="3.1"
+  version="3.1-1"
 # Yamlld is licensed under
 # GNU General Public License v3.0
 # ---------------------------------------
@@ -368,7 +368,7 @@ exit 1" > usr/sbin/nologin
 cat << EOF > sbin/doas
 #!/bin/sh
 
-# Yamlld doas: simple su wrapper
+# Yamlld doas: simple wrapper for su
 
 COMMAND="$@"
 
@@ -526,7 +526,7 @@ chmod 600  var/spool/cron/crontabs/root
 chmod 755  usr/sbin/nologin sbin/disban init sbin/man etc/init.d/rcS\
            usr/sbin/logrotate usr/bin/add-rc.d sbin/halt\
            usr/share/udhcpc/default.script sbin/finish_install \
-	   sbin/install_guide
+	   sbin/install_guide sbin/doas
 chmod 644  etc/passwd etc/group etc/hostname etc/shells etc/hosts etc/fstab\
            etc/issue etc/motd etc/network/interfaces etc/profile
 
