@@ -1,5 +1,5 @@
 # Yamlld Linux
-Yamlld is a busybox based Linux distro based on Yosild with many improvments to it, including UEFI/Legacy support, installation guide,
+Yamlld is a busybox based Linux distro based on Yosild with many improvements to it, including UEFI/Legacy support, installation guide,
 dpkg, newer kernel, new FS support, and many more things.
 
 It's compatible with 32 and 64bit, and is very lightweight. 
