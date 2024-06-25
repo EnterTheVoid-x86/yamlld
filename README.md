@@ -1,6 +1,6 @@
 # Yamlld Linux
 > [!NOTE]
-> Yamlld will soon be deprecated for a much larger project\
+> Yamlld will soon be deprecated for a much larger project
 
 Yamlld is a busybox based Linux distro based on Yosild with many improvements to it, including UEFI/Legacy support, installation guide,
 dpkg, newer kernel, new FS support, and many more things.
